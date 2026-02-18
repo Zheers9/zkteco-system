@@ -95,14 +95,14 @@
         </div>
     </div>
 
-    <!-- Sync Modal -->
     <div id="syncModal" class="modal-overlay"
-        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
-        <div class="glass-panel" style="width:400px; max-width:90%; position:relative;">
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:1000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+        <div class="glass-panel"
+            style="width:400px; max-width:90%; position:relative; background:white; padding:20px; border-radius:8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <div
-                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:1rem;">
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; border-bottom:1px solid #eee; padding-bottom:1rem;">
                 <h3 style="margin:0;">{{ __('messages.select_device') }}</h3>
-                <button onclick="closeSyncModal()"
+                <button type="button" onclick="closeSyncModal()"
                     style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;"><i
                         class="ri-close-line"></i></button>
             </div>
@@ -112,17 +112,28 @@
                     <label
                         style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px;">{{ __('messages.start_date') }}</label>
                     <input type="date" id="sync_start_date" value="{{ date('Y-m-d', strtotime('-1 month')) }}"
-                        class="form-control" style="margin:0; padding:0.5rem;">
+                        class="form-control" style="margin:0; padding:0.5rem; width:100%">
                 </div>
                 <div style="flex:1;">
                     <label
                         style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px;">{{ __('messages.end_date') }}</label>
                     <input type="date" id="sync_end_date" value="{{ date('Y-m-d') }}" class="form-control"
-                        style="margin:0; padding:0.5rem;">
+                        style="margin:0; padding:0.5rem; width:100%">
                 </div>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:0.8rem; max-height:400px; overflow-y:auto;">
+            <div id="sync-status"
+                style="display:none; text-align:center; margin-bottom:10px; padding:10px; background:#f0f9ff; border-radius:4px; color:#0c4a6e;">
+                <div id="sync-message">Initializing...</div>
+                <div class="progress-bar"
+                    style="width:100%; height:6px; background:#e0e0e0; border-radius:3px; margin-top:8px; overflow:hidden;">
+                    <div id="sync-progress" style="width:0%; height:100%; background:#0ea5e9; transition: width 0.3s;">
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:0.8rem; max-height:400px; overflow-y:auto;"
+                id="device-list">
                 @forelse($devices as $device)
                     <button class="btn btn-secondary device-sync-btn" onclick="syncDevice({{ $device->id }}, this)"
                         style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; padding:1rem;">
@@ -146,6 +157,9 @@
 
         function closeSyncModal() {
             document.getElementById('syncModal').style.display = 'none';
+            // Reset UI if needed
+            document.getElementById('sync-status').style.display = 'none';
+            document.getElementById('device-list').style.display = 'flex';
         }
 
         // Close on click outside
@@ -158,51 +172,87 @@
         function syncDevice(id, btn) {
             const startDate = document.getElementById('sync_start_date').value;
             const endDate = document.getElementById('sync_end_date').value;
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
-            const originalContent = btn.innerHTML;
-            // Disable all buttons to prevent multiple clicks
-            document.querySelectorAll('.device-sync-btn').forEach(b => b.disabled = true);
+            // UI Update
+            document.getElementById('device-list').style.display = 'none';
+            const statusDiv = document.getElementById('sync-status');
+            const msgDiv = document.getElementById('sync-message');
+            const bar = document.getElementById('sync-progress');
 
-            btn.innerHTML = `<div style="display:flex; justify-content:center; width:100%;"><span class="loading-spinner"></span></div>`;
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-primary');
+            statusDiv.style.display = 'block';
+            msgDiv.innerText = 'Starting sync request...';
+            bar.style.width = '5%';
 
             fetch(`/devices/${id}/sync-attendance`, {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    'Content-Type': 'application/json'
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     start_date: startDate,
-                    end_date: endDate
+                    end_date: endDate,
+                    async: true // Request async processing
                 })
             })
                 .then(r => r.json())
                 .then(data => {
-                    if (data.success) {
-                        showToast(data.message, 'success');
-                        // Reload page after short delay to show new data
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
+                    if (data.success && data.status === 'queued') {
+                        msgDiv.innerText = data.message;
+                        // Start Polling
+                        pollStatus(id);
                     } else {
-                        showToast(data.message, 'error');
-                        // Reset button
-                        btn.innerHTML = originalContent;
-                        btn.classList.add('btn-secondary');
-                        btn.classList.remove('btn-primary');
-                        document.querySelectorAll('.device-sync-btn').forEach(b => b.disabled = false);
+                        alert('Error: ' + (data.message || 'Unknown error'));
+                        resetModal();
                     }
                 })
                 .catch(e => {
                     console.error(e);
-                    showToast("{{ __('messages.error') }}", 'error');
-                    btn.innerHTML = originalContent;
-                    btn.classList.add('btn-secondary');
-                    btn.classList.remove('btn-primary');
-                    document.querySelectorAll('.device-sync-btn').forEach(b => b.disabled = false);
+                    alert("{{ __('messages.error') }}");
+                    resetModal();
                 });
+        }
+
+        function pollStatus(deviceId) {
+            const msgDiv = document.getElementById('sync-message');
+            const bar = document.getElementById('sync-progress');
+
+            const interval = setInterval(() => {
+                fetch(`/devices/${deviceId}/sync-progress`)
+                    .then(r => r.json())
+                    .then(data => {
+                        // Update UI
+                        if (data.message) msgDiv.innerText = data.message;
+                        if (data.progress) bar.style.width = data.progress + '%';
+
+                        if (data.status === 'completed') {
+                            clearInterval(interval);
+                            bar.style.background = '#10b981'; // Green
+                            setTimeout(() => {
+                                alert("Sync Completed Successfully! " + (data.new || 0) + " new records.");
+                                window.location.reload();
+                            }, 500);
+                        } else if (data.status === 'failed') {
+                            clearInterval(interval);
+                            bar.style.background = '#ef4444'; // Red
+                            alert("Sync Failed: " + data.message);
+                            resetModal();
+                        }
+                    })
+                    .catch(e => {
+                        console.error("Polling error", e);
+                        // Don't stop immediately on network glitch, maybe retry?
+                    });
+            }, 2000); // Poll every 2 seconds
+        }
+
+        function resetModal() {
+            document.getElementById('sync-status').style.display = 'none';
+            document.getElementById('device-list').style.display = 'flex';
+            document.getElementById('sync-progress').style.width = '0%';
+            document.getElementById('sync-progress').style.background = '#0ea5e9';
         }
     </script>
 

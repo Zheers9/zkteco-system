@@ -15,11 +15,13 @@ class Device extends Model
         'port',
         'location',
         'status',
-        'last_connected_at'
+        'last_connected_at',
+        'last_synced_at'
     ];
 
     protected $casts = [
         'last_connected_at' => 'datetime',
+        'last_synced_at' => 'datetime',
         'status' => 'boolean',
     ];
 
