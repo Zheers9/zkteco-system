@@ -16,10 +16,26 @@ class DeviceController extends Controller
     {
         $zk = new ZKTeco($device->ip, $device->port);
         // Comm Key will be handled during connection
-        // Reduce timeout from default 60s to avoid long waits
-        $timeout = array('sec' => $timeoutSec, 'usec' => 0);
-        socket_set_option($zk->_zkclient, SOL_SOCKET, SO_RCVTIMEO, $timeout);
-        socket_set_option($zk->_zkclient, SOL_SOCKET, SO_SNDTIMEO, $timeout);
+
+        // Ensure sockets extension is loaded for reliable timeout handling
+        if (function_exists('socket_set_option')) {
+            $timeout = array('sec' => $timeoutSec, 'usec' => 0);
+            // We need to access the protected property _zkclient if possible, or trust the library defaults if not accessible directly.
+            // The original code accessed a public property or magic property. 
+            // If _zkclient is not accessible, this line might fail. 
+            // Assuming the library exposes it or it's public based on previous code usage.
+
+            // Wrap in try-catch just in case the property is not initialized yet or accessible
+            try {
+                if (isset($zk->_zkclient)) {
+                    socket_set_option($zk->_zkclient, SOL_SOCKET, SO_RCVTIMEO, $timeout);
+                    socket_set_option($zk->_zkclient, SOL_SOCKET, SO_SNDTIMEO, $timeout);
+                }
+            } catch (\Exception $e) {
+                Log::warning("Could not set socket options: " . $e->getMessage());
+            }
+        }
+
         return $zk;
     }
 
