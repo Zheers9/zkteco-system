@@ -103,6 +103,83 @@ class DeviceController extends Controller
         return view('devices.attendance', compact('device', 'logs'));
     }
 
+    // -----------------------------------------------------------------------
+    // SYNC ALL DEVICES
+    // -----------------------------------------------------------------------
+
+    public function syncAllPage()
+    {
+        $devices = Device::all();
+        return view('devices.sync-all', compact('devices'));
+    }
+
+    /**
+     * Ping all devices quickly (2s timeout each) and return their status.
+     * Called first so the UI can show which devices are reachable before syncing.
+     */
+    public function pingAll(Request $request)
+    {
+        $devices = Device::all();
+        $results = [];
+
+        foreach ($devices as $device) {
+            $zk = new ZKTeco($device->ip, $device->port);
+            try {
+                $connected = @$zk->connect(); // suppress warnings
+                if ($connected) {
+                    $zk->disconnect();
+                    $device->update(['status' => true, 'last_connected_at' => now()]);
+                    $results[$device->id] = ['online' => true, 'message' => 'Online'];
+                } else {
+                    $device->update(['status' => false]);
+                    $results[$device->id] = ['online' => false, 'message' => 'Unreachable'];
+                }
+            } catch (\Exception $e) {
+                $device->update(['status' => false]);
+                $results[$device->id] = ['online' => false, 'message' => 'Error: ' . $e->getMessage()];
+            }
+        }
+
+        return response()->json(['results' => $results]);
+    }
+
+    /**
+     * Dispatch background sync jobs for all (or selected) devices simultaneously.
+     * Each device gets its own job — they run in parallel via the queue.
+     */
+    public function dispatchAll(Request $request)
+    {
+        $deviceIds = $request->input('device_ids', []); // array of IDs to sync
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+
+        $devices = Device::when(!empty($deviceIds), fn($q) => $q->whereIn('id', $deviceIds))->get();
+
+        $dispatched = [];
+        foreach ($devices as $device) {
+            // Reset progress cache so the UI starts fresh
+            $cacheKey = "device_sync_progress_{$device->id}";
+            Cache::put($cacheKey, [
+                'status' => 'queued',
+                'progress' => 0,
+                'message' => 'Queued...',
+            ], 600);
+
+            \App\Jobs\SyncDeviceAttendanceJob::dispatch($device, [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+            ]);
+
+            $dispatched[] = $device->id;
+        }
+
+        return response()->json([
+            'success' => true,
+            'dispatched' => $dispatched,
+            'message' => count($dispatched) . ' sync jobs dispatched.',
+        ]);
+    }
+
 
     public function allUsers(Request $request)
     {

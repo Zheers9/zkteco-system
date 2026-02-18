@@ -46,6 +46,30 @@
         </div>
     </div>
 
+    {{-- Sync All Quick Action --}}
+    <div style="margin-bottom:2rem;">
+        <a href="{{ route('devices.sync-all') }}" style="display:flex; align-items:center; gap:1rem; padding:1.2rem 1.5rem; border-radius:12px;
+                       background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(16,185,129,0.1));
+                       border:1px solid rgba(99,102,241,0.3); text-decoration:none; color:inherit;
+                       transition:all 0.2s;"
+            onmouseover="this.style.borderColor='rgba(99,102,241,0.6)'; this.style.transform='translateY(-1px)';"
+            onmouseout="this.style.borderColor='rgba(99,102,241,0.3)'; this.style.transform='none';">
+            <div style="width:48px; height:48px; border-radius:12px; background:rgba(99,102,241,0.2);
+                            display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i class="ri-refresh-line" style="font-size:1.5rem; color:#6366f1;"></i>
+            </div>
+            <div>
+                <div style="font-weight:700; font-size:1rem;">Sync All Devices</div>
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-top:2px;">
+                    Ping all devices, then sync attendance in parallel with live progress
+                </div>
+            </div>
+            <div style="margin-left:auto; color:var(--text-muted);">
+                <i class="ri-arrow-right-s-line" style="font-size:1.4rem;"></i>
+            </div>
+        </a>
+    </div>
+
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
             <h3>Recent Activity</h3>

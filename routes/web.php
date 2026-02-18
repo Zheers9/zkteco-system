@@ -30,6 +30,11 @@ Route::post('/devices/{device}/sync-users', [DeviceController::class, 'syncUsers
 Route::post('/devices/{device}/sync-attendance', [DeviceController::class, 'syncAttendance'])->name('devices.sync-attendance');
 Route::get('/devices/{device}/sync-progress', [DeviceController::class, 'syncProgress'])->name('devices.sync-progress');
 
+// Sync All Devices
+Route::get('/sync-all', [DeviceController::class, 'syncAllPage'])->name('devices.sync-all');
+Route::post('/sync-all/ping', [DeviceController::class, 'pingAll'])->name('devices.ping-all');
+Route::post('/sync-all/dispatch', [DeviceController::class, 'dispatchAll'])->name('devices.dispatch-all');
+
 
 
 // Attendance Global
