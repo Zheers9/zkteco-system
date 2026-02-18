@@ -39,6 +39,7 @@
                     <tr>
                         <th>UID</th>
                         <th>User ID</th>
+                        <th>Name</th>
                         <th>Time</th>
                         <th>Status</th>
                         <th>Type</th>
@@ -49,13 +50,20 @@
                         <tr>
                             <td>{{ $log->uid }}</td>
                             <td>{{ $log->user_id_on_device }}</td>
+                            <td>
+                                @if($log->deviceUser)
+                                    <span style="font-weight:600;">{{ $log->deviceUser->name }}</span>
+                                @else
+                                    <span style="color:var(--text-muted); font-size:0.85rem;">Unknown</span>
+                                @endif
+                            </td>
                             <td>{{ $log->timestamp }}</td>
                             <td>{{ $log->status }}</td>
                             <td>{{ $log->type }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" style="text-align:center;">No logs synced yet.</td>
+                            <td colspan="6" style="text-align:center;">No logs synced yet.</td>
                         </tr>
                     @endforelse
                 </tbody>

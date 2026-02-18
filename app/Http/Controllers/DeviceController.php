@@ -99,7 +99,7 @@ class DeviceController extends Controller
 
     public function attendance(Device $device)
     {
-        $logs = $device->logs()->latest()->paginate(15);
+        $logs = $device->logs()->with('deviceUser')->orderBy('timestamp', 'desc')->paginate(50);
         return view('devices.attendance', compact('device', 'logs'));
     }
 
