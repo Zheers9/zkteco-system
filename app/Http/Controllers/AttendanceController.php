@@ -359,6 +359,10 @@ class AttendanceController extends Controller
     }
     public function payroll(Request $request)
     {
+        // Increase memory and time limit for large reports
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+
         // Default to current month
         $startDate = $request->input('start_date', date('Y-m-01'));
         $endDate = $request->input('end_date', date('Y-m-t'));
@@ -389,6 +393,12 @@ class AttendanceController extends Controller
 
         $allUserIds = $users->keys();
 
+        // Fetch all permissions for the range to optimize query count
+        $allPermissions = \App\Models\Permission::whereIn('user_id_on_device', $allUserIds)
+            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->get()
+            ->groupBy('user_id_on_device');
+
         // 1. Build Weeks Structure
         $weeks = [];
         $current = $start->copy();
@@ -417,9 +427,9 @@ class AttendanceController extends Controller
             $totalAbsent = 0;
             $totalPermission = 0;
 
+            // Get pre-fetched permissions for this user
+            $userPermissionsCollection = $allPermissions[$userId] ?? collect();
 
-
-            // RE-IMPLEMENTING LOOP LOGIC IN REPLACEMENT
             foreach ($weeks as $weekIndex => $week) {
                 // Get logs for this week
                 $weekStart = \Carbon\Carbon::parse($week['start']);
@@ -434,17 +444,12 @@ class AttendanceController extends Controller
                     return \Carbon\Carbon::parse($l->timestamp)->format('Y-m-d');
                 });
 
-                // Fetch Permissions ROBUSTLY (avoid timezone issues with whereBetween)
-                // Filter in PHP to be safe
-                $allUserPermissions = \App\Models\Permission::where('user_id_on_device', $userId)->get();
-                $weekPermissions = $allUserPermissions->filter(function ($perm) use ($weekStart, $weekEnd) {
+                // Filter permissions for this week
+                $weekPermissions = $userPermissionsCollection->filter(function ($perm) use ($weekStart, $weekEnd) {
                     return $perm->date->betweenIncluded($weekStart, $weekEnd);
                 })->keyBy(function ($item) {
                     return $item->date->format('Y-m-d');
                 });
-
-                // Track used permissions to ensure we don't miss any if logic gets complex
-                $usedPermissionDates = [];
 
                 // We need exactly $requiredDays slots
                 $slots = [];
@@ -483,9 +488,7 @@ class AttendanceController extends Controller
                                 $status = 'Permission';
                                 $cssClass = 'info';
                                 $details = \Carbon\Carbon::parse($date)->format('D d') . ' (' . ($weekPermissions[$date]->reason ?? 'Excused') . ')';
-                                $usedPermissionDates[] = $date;
                             } else {
-                                // Should not happen if sortedDates logic is correct
                                 $status = 'Absent';
                                 $cssClass = 'danger';
                             }
@@ -514,7 +517,6 @@ class AttendanceController extends Controller
                                     $status = 'Permission';
                                     $cssClass = 'info';
                                     $details = \Carbon\Carbon::parse($date)->format('D d') . ' (' . ($weekPermissions[$date]->reason ?? 'Permission') . ')';
-                                    $usedPermissionDates[] = $date;
                                 } else {
                                     $status = 'Absent';
                                     $cssClass = 'danger';
@@ -522,17 +524,7 @@ class AttendanceController extends Controller
                             }
                         }
                     } else {
-                        // No logic-derived date available.
-                        // Check if there are any UNUSED permissions that we missed?
-                        // (e.g. if we have more permissions than required days, they would be used up in earlier slots.
-                        // But if we have fewer events than required days, we are here.)
-
-                        // Wait! The sortedDates includes ALL permissions. 
-                        // If we are here, it means we consumed ALL log dates AND ALL permission dates.
-                        // So effectively, there are no permissions left.
-                        // BUT, user says "fill with absent or have permission say permission".
-                        // Logic implies: If we are here, genuinely NO permission exists.
-
+                        // No data for this slot
                         $status = 'Absent';
                         $cssClass = 'danger';
                         $details = '-';
