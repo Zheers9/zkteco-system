@@ -160,7 +160,15 @@ class AttendanceController extends Controller
             return $dateCmp;
         });
 
-        return view('attendance.report', compact('report', 'startDate', 'endDate'));
+        // Status filter (applied after building full report)
+        $statusFilter = $request->input('status_filter', '');
+        if ($statusFilter !== '') {
+            $report = array_values(array_filter($report, function ($row) use ($statusFilter) {
+                return $row['status'] === $statusFilter;
+            }));
+        }
+
+        return view('attendance.report', compact('report', 'startDate', 'endDate', 'statusFilter'));
     }
 
     public function export(Request $request)

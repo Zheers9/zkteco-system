@@ -15,7 +15,7 @@
             </div>
 
             <form action="{{ route('attendance.report') }}" method="GET"
-                style="display:flex; gap:10px; align-items:flex-end;">
+                style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
                 <div>
                     <label
                         style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px;">Search</label>
@@ -36,9 +36,31 @@
                     <input type="date" name="end_date" value="{{ $endDate }}" class="form-control"
                         style="margin:0; width:140px; padding:0.5rem;">
                 </div>
+                <div>
+                    <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px;">
+                        Status
+                    </label>
+                    <select name="status_filter" class="form-control" style="margin:0; padding:0.5rem; width:160px;">
+                        <option value="">— All Statuses —</option>
+                        <option value="Present" {{ ($statusFilter ?? '') === 'Present' ? 'selected' : '' }}>✅ Present</option>
+                        <option value="Late" {{ ($statusFilter ?? '') === 'Late' ? 'selected' : '' }}>🕐 Late</option>
+                        <option value="Early Leave" {{ ($statusFilter ?? '') === 'Early Leave' ? 'selected' : '' }}>🚪 Early
+                            Leave</option>
+                        <option value="Late &amp; Early Leave" {{ ($statusFilter ?? '') === 'Late & Early Leave' ? 'selected' : '' }}>⚠️ Late &amp; Early Leave</option>
+                        <option value="Absent" {{ ($statusFilter ?? '') === 'Absent' ? 'selected' : '' }}>❌ Absent</option>
+                        <option value="Permission" {{ ($statusFilter ?? '') === 'Permission' ? 'selected' : '' }}>📋
+                            Permission</option>
+                    </select>
+                </div>
                 <button type="submit" class="btn btn-primary" style="height:38px; display:inline-flex; align-items:center;">
                     <i class="ri-filter-3-line" style="margin-right:5px;"></i> Generate
                 </button>
+                @if(request('status_filter') || request('search'))
+                    <a href="{{ route('attendance.report', ['start_date' => $startDate, 'end_date' => $endDate]) }}"
+                        class="btn btn-danger" style="height:38px; display:inline-flex; align-items:center;">
+                        <i class="ri-close-line"></i>
+                    </a>
+                @endif
             </form>
         </div>
 
