@@ -166,6 +166,10 @@ class DeviceController extends Controller
 
     public function syncAttendance(Request $request, Device $device)
     {
+        // Increase limits for processing large datasets
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+
         if ($request->has('async')) {
             // Initialize cache for immediate feedback
             $cacheKey = "device_sync_progress_{$device->id}";
@@ -192,58 +196,82 @@ class DeviceController extends Controller
             return response()->json(['success' => false, 'message' => 'Connection failed.']);
         }
 
-
-
         try {
             $zk->enableDevice();
             $logs = $zk->getAttendance(); // Fetches all logs. Might be heavy.
 
-            // Add logging to debug
             Log::info('Device Sync - Raw Logs Count: ' . count($logs));
-            if (count($logs) > 0) {
-                Log::info('First Log Sample:', $logs[0]);
-            } else {
-                Log::info('Device returned empty log array.');
-            }
 
-            // If the library supports fetching new logs only, that would be better, but standard ZK library often fetches all or allows clearing.
-            // We won't clear logs for safety, just upsert.
-
+            // Filter relevant logs first (Performance optimization)
             $startDate = $request->input('start_date');
             $endDate = $request->input('end_date');
-
-            $newCount = 0;
-            $totalCount = 0;
+            $filteredLogs = [];
 
             foreach ($logs as $log) {
                 // log: uid, id (userid), state, timestamp, type
+                if ($startDate && $log['timestamp'] < $startDate . ' 00:00:00')
+                    continue;
+                if ($endDate && $log['timestamp'] > $endDate . ' 23:59:59')
+                    continue;
 
-                // Date Filter (Performance optimization for DB writes)
-                if ($startDate && $log['timestamp'] < $startDate . ' 00:00:00') {
+                $filteredLogs[] = $log;
+            }
+
+            $totalCount = count($filteredLogs);
+
+            if ($totalCount === 0) {
+                $zk->disableDevice();
+                $zk->disconnect();
+                return response()->json(['success' => true, 'message' => "No logs found in the selected date range."]);
+            }
+
+            // Fetch existing logs from DB to avoid N+1 queries
+            // We only need user_id_on_device and timestamp to identify duplicates
+            $query = AttendanceLog::where('device_id', $device->id);
+            if ($startDate)
+                $query->where('timestamp', '>=', $startDate . ' 00:00:00');
+            if ($endDate)
+                $query->where('timestamp', '<=', $endDate . ' 23:59:59');
+
+            $existingLogs = $query->get(['user_id_on_device', 'timestamp'])
+                ->map(function ($log) {
+                    return $log->user_id_on_device . '_' . $log->timestamp->format('Y-m-d H:i:s');
+                })->flip(); // Flip to use keys for faster lookup
+
+            $newLogs = [];
+            $now = now();
+
+            foreach ($filteredLogs as $log) {
+                // Ensure timestamp format consistency
+                $key = $log['id'] . '_' . $log['timestamp'];
+
+                // Check if already exists in DB
+                if ($existingLogs->has($key)) {
                     continue;
                 }
-                if ($endDate && $log['timestamp'] > $endDate . ' 23:59:59') {
-                    continue;
-                }
 
-                $totalCount++;
+                // Add to bulk insert array
+                $newLogs[] = [
+                    'device_id' => $device->id,
+                    'user_id_on_device' => $log['id'],
+                    'timestamp' => $log['timestamp'],
+                    'uid' => $log['uid'],
+                    'status' => $log['state'],
+                    'type' => $log['type'],
+                    'created_at' => $now,
+                    'updated_at' => $now
+                ];
 
-                $attendanceLog = AttendanceLog::firstOrCreate(
-                    [
-                        'device_id' => $device->id,
-                        'user_id_on_device' => $log['id'],
-                        'timestamp' => $log['timestamp']
-                    ],
-                    [
-                        'uid' => $log['uid'],
-                        'status' => $log['state'], // Check-in/out
-                        'type' => $log['type']
-                    ]
-                );
+                // Add to existing map to prevent duplicates within the same batch from device
+                $existingLogs->put($key, true);
+            }
 
-                // Check if this was a newly created record
-                if ($attendanceLog->wasRecentlyCreated) {
-                    $newCount++;
+            $newCount = count($newLogs);
+
+            // Bulk Insert in Chunks
+            if ($newCount > 0) {
+                foreach (array_chunk($newLogs, 1000) as $chunk) {
+                    AttendanceLog::insert($chunk);
                 }
             }
 
@@ -251,13 +279,11 @@ class DeviceController extends Controller
             $zk->disconnect();
             $device->update(['last_connected_at' => now(), 'status' => true]);
 
-            // Provide informative message based on results
+            // Provide informative message
             if ($newCount === 0) {
                 $message = "No new attendance records found. All {$totalCount} records were already synced.";
-            } elseif ($newCount === $totalCount) {
-                $message = "Successfully added {$newCount} new attendance records.";
             } else {
-                $message = "Successfully added {$newCount} new records out of {$totalCount} total records.";
+                $message = "Successfully added {$newCount} new records out of {$totalCount} processed records.";
             }
 
             return response()->json(['success' => true, 'message' => $message]);
