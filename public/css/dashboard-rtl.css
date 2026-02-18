@@ -1,0 +1,59 @@
+/* RTL Overrides for Arabic Support */
+body {
+    direction: rtl;
+    text-align: right;
+}
+
+.sidebar {
+    border-right: none;
+    border-left: 1px solid var(--border);
+    right: 0;
+    left: auto;
+}
+
+.main-content {
+    margin-left: 0;
+    margin-right: 260px;
+}
+
+.nav-link {
+    border-left: none;
+    /* Reset LTR border */
+    border-right: 3px solid transparent;
+    /* Prepare for active/hover */
+}
+
+.nav-link:hover,
+.nav-link.active {
+    background: linear-gradient(270deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+    border-left: none;
+    border-right: 3px solid var(--primary);
+}
+
+.nav-link span {
+    margin-left: 0;
+    margin-right: 10px;
+}
+
+th,
+td {
+    text-align: right;
+}
+
+/* Toast */
+.toast-success {
+    border-left: none;
+    border-right: 6px solid #10b981;
+}
+
+.toast-error {
+    border-left: none;
+    border-right: 6px solid #ef4444;
+}
+
+/* Card Strip */
+.card::before {
+    background: linear-gradient(270deg, var(--primary), var(--secondary));
+    left: auto;
+    right: 0;
+}
