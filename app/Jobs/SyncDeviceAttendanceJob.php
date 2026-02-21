@@ -151,6 +151,7 @@ class SyncDeviceAttendanceJob implements ShouldQueue
                 ->when($effectiveEnd, fn($q) => $q->where('timestamp', '<=', $effectiveEnd))
                 ->get(['user_id_on_device', 'timestamp'])
                 ->mapWithKeys(function ($log) {
+                    // Key format: "<user_id_on_device>|<timestamp>" — must match exactly below
                     return [$log->user_id_on_device . '|' . $log->timestamp->format('Y-m-d H:i:s') => true];
                 });
 
@@ -165,7 +166,9 @@ class SyncDeviceAttendanceJob implements ShouldQueue
             $chunkSize = 500;
 
             foreach ($filteredLogs as $log) {
-                $key = $log['id'] . '|' . $log['timestamp'];
+                // $log['id'] from the device = user_id_on_device in the DB
+                // Key must match exactly what we built from the DB above
+                $key = $log['id'] . '|' . date('Y-m-d H:i:s', strtotime($log['timestamp']));
 
                 if (isset($existingKeys[$key])) {
                     continue; // Already in DB

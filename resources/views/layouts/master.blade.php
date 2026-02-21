@@ -100,6 +100,7 @@
             </div>
 
             <div style="display:flex; gap:1rem; align-items:center;">
+                @yield('header_actions')
                 <!-- Language Switcher -->
                 <div class="lang-switcher">
                     <a href="{{ route('locale', 'en') }}"

@@ -49,6 +49,8 @@ Route::get('/attendance/export', [App\Http\Controllers\AttendanceController::cla
 // Schedules Management
 Route::get('/schedules', [App\Http\Controllers\ScheduleController::class, 'index'])->name('schedules.index');
 Route::post('/schedules/update-all', [App\Http\Controllers\ScheduleController::class, 'update'])->name('schedules.update_all');
+Route::post('/schedules/period', [App\Http\Controllers\ScheduleController::class, 'storePeriod'])->name('schedules.periods.store');
+Route::delete('/schedules/period', [App\Http\Controllers\ScheduleController::class, 'destroyPeriod'])->name('schedules.periods.destroy');
 
 // Device Users - List all users from all devices
 Route::get('/device-users', [DeviceController::class, 'allUsers'])->name('device-users.index');

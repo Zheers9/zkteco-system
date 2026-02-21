@@ -69,7 +69,8 @@ class AttendanceController extends Controller
         // Filter logs only for found users
         $groupedLogs = $logs->groupBy('user_id_on_device')->intersectByKeys($users);
 
-        $schedules = \App\Models\Schedule::all()->keyBy('day_of_week');
+        // Fetch all schedules ordered by type (special first, then default)
+        $schedules = \App\Models\Schedule::orderByRaw('start_date IS NULL ASC')->get();
 
         // 6. Fetch Permissions for this range
         $permissions = \App\Models\Permission::whereBetween('date', [$startDate, $endDate])
@@ -92,14 +93,22 @@ class AttendanceController extends Controller
             // If the user is Absent (no logs), they won't appear in $groupedLogs loop for that day unless we fill gaps.
             // However, the requested logic was "if have 1 data checknot checout make it abcent... mark as permission"
             // This implies overriding the "Absent" status derived from LOGS.
-
             // For now, let's just override the ones that result in "Absent" due to invalid punches.
 
             $userPermissions = $permissions[$userId] ?? collect();
 
             foreach ($logsByDate as $date => $dayLogs) {
                 $dayOfWeek = \Carbon\Carbon::parse($date)->dayOfWeek; // 0 (Sun) - 6 (Sat)
-                $schedule = $schedules[$dayOfWeek] ?? null;
+
+                // Find matching schedule: prioritize one with date range, otherwise default
+                $schedule = $schedules->first(function ($s) use ($date, $dayOfWeek) {
+                    if ($s->day_of_week != $dayOfWeek)
+                        return false;
+                    if ($s->start_date && $s->end_date) {
+                        return $date >= $s->start_date && $date <= $s->end_date;
+                    }
+                    return $s->start_date === null;
+                });
 
                 $firstPunch = $dayLogs->first();
                 $lastPunch = $dayLogs->last();
@@ -254,7 +263,7 @@ class AttendanceController extends Controller
                     return $l->date;
                 })->unique()->toArray();
                 $permissionDates = $userPermissions->map(function ($p) {
-                    return $p->date->format('Y-m-d');
+                    return \Carbon\Carbon::parse($p->date)->format('Y-m-d');
                 })->toArray();
 
                 $combinedDates = array_unique(array_merge($attendedDates, $permissionDates));
@@ -376,7 +385,8 @@ class AttendanceController extends Controller
         $endDate = $request->input('end_date', date('Y-m-t'));
 
         $requiredDays = \App\Models\Setting::where('key', 'required_work_days')->value('value') ?? 3;
-        $schedules = \App\Models\Schedule::all()->keyBy('day_of_week');
+        // Fetch all schedules ordered by type (special first, then default)
+        $schedules_coll = \App\Models\Schedule::orderByRaw('start_date IS NULL ASC')->get();
 
         // Align dates to full weeks (Sat - Fri)
         $start = \Carbon\Carbon::parse($startDate)->startOfWeek(\Carbon\Carbon::SATURDAY);
@@ -456,7 +466,7 @@ class AttendanceController extends Controller
                 $weekPermissions = $userPermissionsCollection->filter(function ($perm) use ($weekStart, $weekEnd) {
                     return $perm->date->betweenIncluded($weekStart, $weekEnd);
                 })->keyBy(function ($item) {
-                    return $item->date->format('Y-m-d');
+                    return \Carbon\Carbon::parse($item->date)->format('Y-m-d');
                 });
 
                 // We need exactly $requiredDays slots
@@ -483,7 +493,14 @@ class AttendanceController extends Controller
                         $dayLogs = $daysLogs[$date] ?? collect();
 
                         $dayOfWeek = \Carbon\Carbon::parse($date)->dayOfWeek;
-                        $schedule = $schedules[$dayOfWeek] ?? null;
+                        $schedule = $schedules_coll->first(function ($s) use ($date, $dayOfWeek) {
+                            if ($s->day_of_week != $dayOfWeek)
+                                return false;
+                            if ($s->start_date && $s->end_date) {
+                                return $date >= $s->start_date && $date <= $s->end_date;
+                            }
+                            return $s->start_date === null;
+                        });
 
                         // Default checks
                         $status = 'Attend';

@@ -360,7 +360,8 @@ class DeviceController extends Controller
             $now = now();
 
             foreach ($filteredLogs as $log) {
-                $key = $log['id'] . '|' . $log['timestamp'];
+                // Normalize timestamp to Y-m-d H:i:s to match the DB key format exactly
+                $key = $log['id'] . '|' . date('Y-m-d H:i:s', strtotime($log['timestamp']));
                 if (isset($existingKeys[$key]))
                     continue;
 
